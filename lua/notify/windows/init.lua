@@ -45,24 +45,38 @@ function WindowAnimator:push_pending(queue)
   while not queue:is_empty() do
     ---@type NotificationBuf
     local notif_buf = queue:peek()
-    local windows = vim.tbl_keys(self.win_stages)
-    local win_opts = self.stages[1]({
-      message = self:_get_dimensions(notif_buf),
-      open_windows = windows,
-    })
-    if not win_opts then
-      return
+
+    if vim.fn.bufexists(notif_buf:buffer()) ~= 0 then
+      local windows = vim.tbl_keys(self.win_stages)
+      local win_opts = self.stages[1]({
+        message = self:_get_dimensions(notif_buf),
+        open_windows = windows,
+      })
+      if not win_opts then
+        return
+      end
+      local opacity = util.pop(win_opts, "opacity")
+      if opacity then
+        notif_buf.highlights:set_opacity(opacity)
+      end
+      win_opts.noautocmd = true
+      local win = util.open_win(notif_buf, false, win_opts)
+      self.win_stages[win] = 2
+      self.win_states[win] = {}
+      self.notif_bufs[win] = notif_buf
+
+      -- Remove window if buffer is removed.
+      api.nvim_buf_attach(notif_buf:buffer(), false, {
+        on_detach = function()
+          if self.notif_bufs[win] ~= nil then
+            self:remove_win(win)
+          end
+        end,
+      })
+
+      notif_buf:open(win)
     end
-    local opacity = util.pop(win_opts, "opacity")
-    if opacity then
-      notif_buf.highlights:set_opacity(opacity)
-    end
-    win_opts.noautocmd = true
-    local win = util.open_win(notif_buf, false, win_opts)
-    self.win_stages[win] = 2
-    self.win_states[win] = {}
-    self.notif_bufs[win] = notif_buf
-    notif_buf:open(win)
+
     queue:pop()
   end
 end
